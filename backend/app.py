@@ -22,7 +22,7 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 import asyncio
 from fastapi import FastAPI, HTTPException
@@ -389,9 +389,9 @@ def create_knowledge(entry: KnowledgeEntry):
     }
     _knowledge_entries.append(stored_entry)
 
-    # Chunking: divide o conteúdo em chunks indexáveis com prefixo contextual
-    prefix = f"[{entry.category}] [{entry.scope}] {entry.title}"
-    chunks = chunk_text(entry.content, prefix=prefix)
+    # Chunking: divide o conteúdo em chunks indexáveis (sem prefixo;
+    # o enriquecimento contextual é aplicado na busca em search_knowledge)
+    chunks = chunk_text(entry.content)
 
     for idx, chunk in enumerate(chunks):
         chunk_id = f"{entry_id}-chunk-{idx}"
