@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DevRAG — Dashboard de Economia de Tokens</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+
+  <!-- Navbar -->
+  <nav class="bg-white border-b border-gray-200 px-6 py-4">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center text-white font-bold">R</div>
+        <h1 class="text-xl font-bold text-gray-800">DevRAG</h1>
+      </div>
+      <div class="flex items-center gap-4">
+        <span id="status-indicator" class="flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+          <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+          <span id="status-text">Backend Online</span>
+        </span>
+        <button onclick="location.reload()" class="text-gray-500 hover:text-gray-700">Atualizar</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-7xl mx-auto px-6 py-8 space-y-8">
+
+    <!-- Resumo -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+        <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider">Tokens Economizados</h3>
+        <div class="mt-2 flex items-baseline gap-1">
+          <span class="text-3xl font-bold text-green-600" id="total-saved">--</span>
+          <span class="text-sm font-medium text-gray-500">tokens</span>
+        </div>
+      </div>
+
+      <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+        <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider">Economia Média</h3>
+        <div class="mt-2 flex items-baseline gap-1">
+          <span class="text-3xl font-bold text-blue-600" id="avg-savings">--%</span>
+          <span class="text-sm font-medium text-gray-500">por requisição</span>
+        </div>
+      </div>
+
+      <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+        <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider">Requisições</h3>
+        <div class="mt-2 flex items-baseline gap-1">
+          <span class="text-3xl font-bold text-indigo-600" id="total-requests">--</span>
+          <span class="text-sm font-medium text-gray-500">com RAG ativo</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gráficos -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- Economia por dia -->
+      <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+        <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-6">Economia de Tokens por Dia</h3>
+        <div class="h-64">
+          <canvas id="savingsChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Distribuição de economia -->
+      <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+        <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-6">Distribuição de Economia (%)</h3>
+        <div class="h-64">
+          <canvas id="distributionChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabela de histórico -->
+    <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+      <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-6">Histórico de Requisições</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left text-gray-700">
+          <thead class="bg-gray-50 text-gray-600 uppercase text-xs">
+            <tr>
+              <th class="px-4 py-3 font-medium">Data/Hora</th>
+              <th class="px-4 py-3 font-medium">Consulta</th>
+              <th class="px-4 py-3 font-medium">Contexto Completo</th>
+              <th class="px-4 py-3 font-medium">Com RAG</th>
+              <th class="px-4 py-3 font-medium">Economia</th>
+            </tr>
+          </thead>
+          <tbody id="history-table" class="divide-y divide-gray-100">
+            <!-- linhas preenchidas via JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    const API_BASE = 'http://127.0.0.1:4200';
+
+    let savingsChart = null;
+    let distributionChart = null;
+
+    async function loadMetrics() {
+      try {
+        // Verificar status do backend
+        const healthResp = await fetch(`${API_BASE}/api/health`);
+        const healthOk = healthResp.ok;
+        document.getElementById('status-indicator').className = healthOk
+          ? 'flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700'
+          : 'flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700';
+        document.getElementById('status-text').textContent = healthOk ? 'Backend Online' : 'Backend Offline';
+
+        // Carregar métricas agregadas
+        const summaryResp = await fetch(`${API_BASE}/api/metrics/savings`);
+        const summary = await summaryResp.json();
+
+        document.getElementById('total-saved').textContent = summary.total_tokens_saved.toLocaleString('pt-BR');
+        document.getElementById('avg-savings').textContent = summary.average_savings_percent.toFixed(1) + '%';
+        document.getElementById('total-requests').textContent = summary.total_requests.toLocaleString('pt-BR');
+
+        // Carregar histórico
+        const historyResp = await fetch(`${API_BASE}/api/metrics/token-usage/history`);
+        const history = await historyResp.json();
+
+        renderHistoryTable(history);
+        renderCharts(history);
+
+      } catch (err) {
+        console.error('Erro ao carregar métricas:', err);
+        document.getElementById('status-text').textContent = 'Erro de conexão';
+      }
+    }
+
+    function renderHistoryTable(history) {
+      const tbody = document.getElementById('history-table');
+      tbody.innerHTML = '';
+
+      // Ordenar por timestamp decrescente
+      const sorted = [...history].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      sorted.slice(0, 50).forEach(item => {
+        const date = new Date(item.timestamp).toLocaleString('pt-BR', {
+          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        });
+        const query = item.query.length > 60 ? item.query.substring(0, 60) + '...' : item.query;
+
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-gray-50 transition-colors';
+        tr.innerHTML = `
+          <td class="px-4 py-3 text-gray-600 font-mono text-xs">${date}</td>
+          <td class="px-4 py-3 text-gray-700 truncate max-w-xs" title="${item.query}">${query}</td>
+          <td class="px-4 py-3 text-gray-600 font-mono text-xs">${item.full_context_estimate.toLocaleString('pt-BR')}</td>
+          <td class="px-4 py-3 text-gray-600 font-mono text-xs">${item.rag_context_tokens.toLocaleString('pt-BR')}</td>
+          <td class="px-4 py-3">
+            <span class="px-2 py-1 rounded-full text-xs font-bold ${item.savings_percent > 50 ? 'bg-green-100 text-green-700' : item.savings_percent > 20 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'}">
+              ${item.savings_percent.toFixed(1)}%
+            </span>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderCharts(history) {
+      if (history.length === 0) return;
+
+      // Agrupar por dia
+      const dailyMap = {};
+      history.forEach(item => {
+        const day = item.timestamp.substring(0, 10);
+        if (!dailyMap[day]) dailyMap[day] = 0;
+        dailyMap[day] += item.savings_tokens;
+      });
+
+      const dailyLabels = Object.keys(dailyMap).sort();
+      const dailyData = dailyLabels.map(day => dailyMap[day]);
+
+      // Gráfico de linha - economia por dia
+      const ctx1 = document.getElementById('savingsChart').getContext('2d');
+      if (savingsChart) savingsChart.destroy();
+      savingsChart = new Chart(ctx1, {
+        type: 'line',
+        data: {
+          labels: dailyLabels,
+          datasets: [{
+            label: 'Tokens Economizados',
+            data: dailyData,
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 122, 0.1)',
+            borderWidth: 2,
+            pointRadius: 3,
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'Tokens' } },
+            x: { title: { display: true, text: 'Data' } }
+          }
+        }
+      });
+
+      // Gráfico de barras - distribuição de economia %
+      const bins = { '0-20%': 0, '21-40%': 0, '41-60%': 0, '61-80%': 0, '81-100%': 0 };
+      history.forEach(item => {
+        const pct = item.savings_percent;
+        if (pct <= 20) bins['0-20%']++;
+        else if (pct <= 40) bins['21-40%']++;
+        else if (pct <= 60) bins['41-60%']++;
+        else if (pct <= 80) bins['61-80%']++;
+        else bins['81-100%']++;
+      });
+
+      const ctx2 = document.getElementById('distributionChart').getContext('2d');
+      if (distributionChart) distributionChart.destroy();
+      distributionChart = new Chart(ctx2, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(bins),
+          datasets: [{
+            label: 'Requisições',
+            data: Object.values(bins),
+            backgroundColor: ['#fbbf24', '#f59e0b', '#d97706', '#b45309', '#10b981'],
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, title: { display: true, text: 'Qtd. Requisições' } },
+            x: { title: { display: true, text: 'Faixa de Economia' } }
+          }
+        }
+      });
+    }
+
+    // Carregar ao abrir
+    loadMetrics();
+
+    // Auto-atualizar a cada 30 segundos
+    setInterval(loadMetrics, 30000);
+  </script>
+</body>
+</html>

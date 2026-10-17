@@ -1,0 +1,58 @@
+{
+  "version": "2.0",
+  "plugins": [
+    {
+      "name": "devkit",
+      "path": "plugins/devkit",
+      "enabled": true
+    }
+  ],
+  "agents": {},
+  "commands": {},
+  "mcp": {
+    "postgres": {
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://postgres:postgres@localhost:5432/achadinhos"
+      ],
+      "env": {}
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-filesystem",
+        "C:/Users/pcbsytem/Projects",
+        "C:/Users/pcbsytem/.config/opencode",
+        "C:/Users/pcbsytem/.claude/extension/server"
+      ],
+      "env": {}
+    },
+    "memory": {
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-memory"
+      ],
+      "env": {}
+    },
+    "kb-rag": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "kb-mcp-server"
+      ],
+      "env": {}
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      }
+    }
+  },
+  "models": {}
+}

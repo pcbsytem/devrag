@@ -1,0 +1,33 @@
+# Dependências
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ambiente
+.env
+.env.local
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# OpenCode
+*.lock
+.opencode/
