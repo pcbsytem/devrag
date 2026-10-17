@@ -5,7 +5,7 @@
  * 1. DEGRADAÇÃO GRACIOSA: se o FastAPI estiver fora de ar/lento/erro,
  *    o agente CONTINUA funcionando. Nunca lança exceção.
  * 2. Timeout de 5s via AbortController.
- * 3. Segredo do hook lido de ~/.claude/.credentials.json (fora do argv).
+ * 3. Segredo do hook lido do arquivo .credentials.json. A variável de ambiente DEVKIT_SECRET não é usada no código.
  * 4. Observable via client.app.log() com service "devkit".
  */
 
@@ -37,7 +37,7 @@ async function getSecret(): Promise<string> {
     secretReadError = err as Error;
     secret = "";
   }
-  return secret;
+  return secret ?? "";
 }
 
 /**

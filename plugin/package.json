@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@opencode-ai/sdk": "^1.19.3",
+    "@opencode-ai/plugin": "^1.19.3",
     "cross-fetch": "^4.0.0"
   },
   "devDependencies": {

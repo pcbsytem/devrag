@@ -15,16 +15,6 @@
 import * as fs from "fs";
 import * as path from "path";
 
-interface CaptureEvent {
-  type: "session.idle" | "file.edited" | "tool.execute.before";
-  content?: string;
-  file?: string;
-  tool?: string;
-  sessionID?: string;
-  cwd?: string;
-  properties?: Record<string, unknown>;
-}
-
 /**
  * Palavras triviais — não geram conhecimento.
  */
@@ -169,7 +159,7 @@ export function suggestSummary(content: string): string {
 /**
  * Classifica o escopo com base no conteúdo e no diretório de trabalho.
  */
-export function suggestScope(content: string, cwd?: string): "project" | "stack" | "domain" | "universal" {
+export function suggestScope(content: string): "project" | "stack" | "domain" | "universal" {
   const normalized = content.toLowerCase();
 
   // Indicadores de stack (tecnologia específica)

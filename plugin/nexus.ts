@@ -198,7 +198,8 @@ export class Nexus {
         error: null,
       };
     } catch (err) {
-      return { data: null, error: `Falha ao listar sessões: ${String(err)}` };
+      const code = (err as { code?: string | number })?.code;
+      return { data: null, error: code ? `Falha ao listar sessões (código ${code})` : `Falha ao listar sessões: ${String(err)}` };
     }
   }
 
@@ -226,7 +227,8 @@ export class Nexus {
         error: null,
       };
     } catch (err) {
-      return { data: null, error: `Falha ao criar sessão: ${String(err)}` };
+      const code = (err as { code?: string | number })?.code;
+      return { data: null, error: code ? `Falha ao criar sessão (código ${code})` : `Falha ao criar sessão: ${String(err)}` };
     }
   }
 
@@ -247,7 +249,8 @@ export class Nexus {
 
       return { data: true, error: null };
     } catch (err) {
-      return { data: null, error: `Falha ao cancelar sessão ${sessionId}: ${String(err)}` };
+      const code = (err as { code?: string | number })?.code;
+      return { data: null, error: code ? `Falha ao cancelar sessão ${sessionId} (código ${code})` : `Falha ao cancelar sessão ${sessionId}: ${String(err)}` };
     }
   }
 
@@ -272,7 +275,8 @@ export class Nexus {
         error: null,
       };
     } catch (err) {
-      return { data: null, error: `Falha ao obter sessão ${sessionId}: ${String(err)}` };
+      const code = (err as { code?: string | number })?.code;
+      return { data: null, error: code ? `Falha ao obter sessão ${sessionId} (código ${code})` : `Falha ao obter sessão ${sessionId}: ${String(err)}` };
     }
   }
 
@@ -327,7 +331,8 @@ export class Nexus {
         error: null,
       };
     } catch (err) {
-      return { data: null, error: `Falha ao executar task: ${String(err)}` };
+      const code = (err as { code?: string | number })?.code;
+      return { data: null, error: code ? `Falha ao executar task (código ${code})` : `Falha ao executar task: ${String(err)}` };
     }
   }
 

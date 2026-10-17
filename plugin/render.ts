@@ -7,7 +7,7 @@
  * - Sem ruído: nunca injeta nada se não houver resultados.
  */
 
-interface KnowledgeHit {
+export interface KnowledgeHit {
   title: string;
   summary: string;
   content?: string;

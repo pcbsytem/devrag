@@ -15,12 +15,12 @@
  * - devkit_recall: busca conhecimento (bugs, decisões, armadilhas).
  */
 
-import { Session, Plugin } from "@opencode-ai/plugin";
-import { devkitCall, devkitHealth } from "./client";
+import { devkitCall } from "./client";
 import { devkitRecallTool } from "./tools";
 import {
   renderKnowledgeBlock,
   isTrivialMessage,
+  KnowledgeHit,
 } from "./render";
 import {
   shouldCapture,
@@ -30,12 +30,22 @@ import {
   suggestCategory,
   saveLocalKnowledge,
 } from "./capture";
+import {
+  Session,
+  DevKitPlugin,
+  ContextHookEvent,
+  SessionCreatedEvent,
+  SessionIdleEvent,
+  FileEditedEvent,
+  ToolExecuteBeforeInput,
+  ToolExecuteBeforeOutput,
+} from "./types";
 
 export interface DevKitPluginOptions {
   baseUrl?: string;
 }
 
-export const devkitPlugin = (options: DevKitPluginOptions = {}): Plugin => {
+export const devkitPlugin = (options: DevKitPluginOptions = {}): DevKitPlugin => {
   if (options.baseUrl) {
     process.env.DEVKIT_URL = options.baseUrl;
   }
@@ -47,32 +57,31 @@ export const devkitPlugin = (options: DevKitPluginOptions = {}): Plugin => {
       // =====================================================================
       // FASE 1 — Injeção de contexto (RAG push)
       // =====================================================================
-      // Executa antes de cada chamada ao modelo, enxerga as mensagens e
-      // edita system/messages só para aquela chamada.
       ctx.session.hook("context", async (event) => {
-        const last = event.messages.at(-1);
+        const typedEvent = event as ContextHookEvent;
+        const last = typedEvent.messages.at(-1);
         const text = last ? extractText(last) : "";
         if (!text || isTrivialMessage(text)) return;
 
-        const hits = await devkitCall("/api/knowledge/search", {
+        const hits = (await devkitCall<{ results: KnowledgeHit[] }>("/api/knowledge/search", {
           query: text,
           scope: "project",
           cwd: ctx.directory,
           limit: 5,
-        });
-        if (!hits || !Array.isArray((hits as any).results)) return;
+        }))?.results ?? [];
+        if (hits.length === 0) return;
 
-        const block = renderKnowledgeBlock((hits as any).results);
+        const block = renderKnowledgeBlock(hits);
         if (!block) return;
 
-        event.system.push({
+        typedEvent.system.push({
           type: "text",
           text: block,
         });
 
         // --- Métricas de economia de tokens ---
         const queryTokens = estimateTokens(text);
-        const fullContextEstimate = queryTokens + estimateTokens(block) * 5; // estimativa de contexto completo sem RAG
+        const fullContextEstimate = queryTokens + estimateTokens(block) * 5;
         const ragTokens = queryTokens + estimateTokens(block);
         const savingsTokens = Math.max(0, fullContextEstimate - ragTokens);
         const savingsPercent = fullContextEstimate > 0 ? (savingsTokens / fullContextEstimate) * 100 : 0;
@@ -88,8 +97,8 @@ export const devkitPlugin = (options: DevKitPluginOptions = {}): Plugin => {
 
         ctx.app.log({
           service: "devkit",
-          message: `Conhecimento injetado: ${(hits as any).results.length} entries | Economia: ${savingsPercent.toFixed(1)}%`,
-          data: { query: text, cwd: ctx.directory, savingsTokens, savingsPercent },
+          message: `Conhecimento injetado: ${hits.length} entries | Economia: ${savingsPercent.toFixed(1)}%`,
+          data: { savingsTokens, savingsPercent },
         });
       });
 
@@ -99,15 +108,17 @@ export const devkitPlugin = (options: DevKitPluginOptions = {}): Plugin => {
 
       // session.created — registra início da sessão
       ctx.session.on("session.created", async (event) => {
+        const typedEvent = event as SessionCreatedEvent;
         await devkitCall("/api/hook/session-start", {
-          session_id: event.properties.sessionID,
+          session_id: typedEvent.properties.sessionID,
           cwd: ctx.directory,
         });
       });
 
       // session.idle — captura aprendizados ao final da sessão
       ctx.session.on("session.idle", async (event) => {
-        const sessionID = event.properties.sessionID as string;
+        const typedEvent = event as SessionIdleEvent;
+        const sessionID = typedEvent.properties.sessionID;
 
         // Chama o hook de stop no backend
         await devkitCall("/api/hook/stop", {
@@ -116,9 +127,9 @@ export const devkitPlugin = (options: DevKitPluginOptions = {}): Plugin => {
         });
 
         // Tenta capturar o último aprendizado da sessão
-        const messages = event.messages ?? [];
+        const messages = typedEvent.messages ?? [];
         const lastUserMsg = messages
-          .filter((m: any) => m.role === "user")
+          .filter((m: { role: string; content?: unknown }) => m.role === "user")
           .pop();
 
         if (lastUserMsg) {
@@ -130,7 +141,7 @@ export const devkitPlugin = (options: DevKitPluginOptions = {}): Plugin => {
                 title: suggestTitle(text),
                 content: text,
                 summary: suggestSummary(text),
-                scope: suggestScope(text, ctx.directory),
+                scope: suggestScope(text),
                 category: suggestCategory(text),
                 cwd: ctx.directory,
                 sessionID,
@@ -148,7 +159,8 @@ export const devkitPlugin = (options: DevKitPluginOptions = {}): Plugin => {
 
       // file.edited — captura mudanças de código
       ctx.session.on("file.edited", async (event) => {
-        const file = event.properties.path as string;
+        const typedEvent = event as FileEditedEvent;
+        const file = typedEvent.properties.path;
         await devkitCall("/api/hook/post-tool-use", {
           tool: "edit",
           file,
@@ -156,7 +168,7 @@ export const devkitPlugin = (options: DevKitPluginOptions = {}): Plugin => {
         });
 
         // Se houver conteúdo do diff, tenta capturar
-        const diffContent = event.properties.diff as string | undefined;
+        const diffContent = typedEvent.properties.diff;
         if (diffContent) {
           const decision = shouldCapture(diffContent);
           if (decision.capture) {
@@ -164,10 +176,10 @@ export const devkitPlugin = (options: DevKitPluginOptions = {}): Plugin => {
               title: `Edição: ${file}`,
               content: diffContent,
               summary: suggestSummary(diffContent),
-              scope: suggestScope(diffContent, ctx.directory),
+              scope: suggestScope(diffContent),
               category: "pattern",
               cwd: ctx.directory,
-              sessionID: event.properties.sessionID as string,
+              sessionID: typedEvent.properties.sessionID,
             });
           }
         }
@@ -175,10 +187,12 @@ export const devkitPlugin = (options: DevKitPluginOptions = {}): Plugin => {
 
       // tool.execute.before — pré-edição com bloqueio real
       ctx.tool.hook("execute.before", async (input, output) => {
-        if (input.tool !== "edit" && input.tool !== "write") return;
+        const typedInput = input as ToolExecuteBeforeInput;
+        const typedOutput = output as ToolExecuteBeforeOutput;
+        if (typedInput.tool !== "edit" && typedInput.tool !== "write") return;
 
-        const verdict = await devkitCall("/api/hook/pre-edit-guard", {
-          file: output.args.filePath,
+        const verdict = await devkitCall<{ block: boolean; reason?: string }>("/api/hook/pre-edit-guard", {
+          file: (typedOutput.args as { filePath: string }).filePath,
           cwd: ctx.directory,
         });
         if (verdict?.block) {
@@ -237,10 +251,11 @@ async function captureLearning(entry: {
  * Helper de log (evita dependência direta do ctx.app no capture.ts).
  */
 function ctxAppLog(message: string, data?: Record<string, unknown>): void {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const globalCtx = (globalThis as any).__DEVKIT_CTX__;
-  if (globalCtx?.app?.log) {
-    globalCtx.app.log({
+  const globalCtx = globalThis as {
+    __DEVKIT_CTX__?: { app?: { log?: (data: unknown) => void } };
+  };
+  if (globalCtx.__DEVKIT_CTX__?.app?.log) {
+    globalCtx.__DEVKIT_CTX__?.app?.log({
       service: "devkit",
       message,
       data,
@@ -251,12 +266,20 @@ function ctxAppLog(message: string, data?: Record<string, unknown>): void {
 /**
  * Extrai texto de uma mensagem (texto simples ou array de partes).
  */
-function extractText(msg: any): string {
+function extractText(
+  msg: { content?: string | unknown[] } | null | undefined,
+): string {
   if (!msg) return "";
   if (typeof msg.content === "string") return msg.content;
   if (Array.isArray(msg.content)) {
     return msg.content
-      .map((p: any) => (typeof p.text === "string" ? p.text : ""))
+      .map((p: unknown) => {
+        if (typeof p === "object" && p !== null && "text" in p) {
+          const t = (p as { text: unknown }).text;
+          return typeof t === "string" ? t : "";
+        }
+        return "";
+      })
       .join("\n");
   }
   return "";

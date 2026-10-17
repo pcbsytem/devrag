@@ -5,9 +5,9 @@
  *   Use ANTES de propor mudança arquitetural ou investigar erro.
  */
 
-import { tool } from "@opencode-ai/plugin";
+import { tool, type ToolContext } from "@opencode-ai/plugin";
 import { devkitCall } from "./client";
-import { renderKnowledgeBlock } from "./render";
+import { renderKnowledgeBlock, KnowledgeHit } from "./render";
 
 export const devkitRecallTool = tool({
   description:
@@ -19,16 +19,17 @@ export const devkitRecallTool = tool({
       .enum(["project", "stack", "domain", "universal"])
       .optional(),
   },
-  async execute(args, context) {
-    const r = await devkitCall("/api/knowledge/search", {
+  async execute(args: { query: string; scope?: string }, context: ToolContext) {
+    const r = await devkitCall<{ results: KnowledgeHit[] }>("/api/knowledge/search", {
       query: args.query,
       scope: args.scope,
       cwd: context.directory,
       limit: 8,
     });
-    if (!r || !Array.isArray((r as any).results)) {
+    const hits = r?.results ?? [];
+    if (hits.length === 0) {
       return "DevKit indisponível ou sem resultados.";
     }
-    return renderKnowledgeBlock((r as any).results) || "Sem resultados relevantes.";
+    return renderKnowledgeBlock(hits) || "Sem resultados relevantes.";
   },
 });
