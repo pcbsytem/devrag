@@ -9,7 +9,6 @@
  * 4. Observable via client.app.log() com service "devkit".
  */
 
-import fetch from "cross-fetch";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
